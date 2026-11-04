@@ -23,22 +23,26 @@ filters:
 
   # you can add other filters, for example to only download Quadrotor logs
   # just create a list of the allowable values like in "rating" list above
+  mav_type:
+  - Hexarotor
+  - Octorotor
+  - Quadrotor
 
 # if you have already downloaded the database info file, just use it
 # this json file must be placed in /DeepNav/DeepNav_data/database_info_files
-local_db_info_file: filtered_px4_db_info_16Nov2020.json
+local_db_info_file: filtered_px4_db_info_04Nov2026.json
 
 # maximum number of logs to download, if the filters are relaxed you
 # could end up downloading hundreds of gigabytes of logs
 max_num: 1000
 
 # overwrite existing logs?
-overwrite: false
+overwrite: true
 
 # only download the database info file without downloading the logs themselves
-save_db_info_only: true
+save_db_info_only: false
 
 # use the local database info file without retrieving a new one
 # note that retrieving a new info file takes time, and the server
 # request fails more often than it succeeds
-use_local_db_info: false
+use_local_db_info: true
