@@ -64,7 +64,11 @@ with PdfPages(pdf_name) as pdf:
         edited = False
 
         # read the log name, manually determined start and end points for trimming
-        log_name, start, end = bad_logs_line.strip().split(",")
+        # log_name, start, end = bad_logs_line.strip().split(",")
+        parts = [p.strip() for p in bad_logs_line.strip().split(",")]
+        log_name = parts[0]
+        start = parts[1] if len(parts) > 1 else ""
+        end = parts[2] if len(parts) > 2 else ""
         flight_name = log_name + ".csv"
 
         print("trimming", flight_num, "/", total_flights_num)
