@@ -38,7 +38,7 @@ local_db_info_file: px4_db_info_04Nov2026.json
 
 # maximum number of logs to download, if the filters are relaxed you
 # could end up downloading hundreds of gigabytes of logs
-max_num: 10
+max_num: 1000
 
 # overwrite existing logs?
 overwrite: true

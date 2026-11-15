@@ -97,7 +97,7 @@ def error_labels_to_ids(error_labels):
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # read the user arguments (including filters for log download)
-with open("downloader_options.yaml", 'r') as stream:
+with open("00_downloader_options.yaml", 'r') as stream:
     arguments = yaml.safe_load(stream)
 
 # create a folder to store database info files
