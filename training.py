@@ -78,9 +78,9 @@ def start_training(session_data, model_architecture, train_ds, val_ds, signals_w
         Computes mean absolute error between labels and predictions, and weighs it
         such that signals with low values recieve high weights
         """
-        y_pred = ops.convert_to_tensor_v2(y_pred)
-        y_true = math_ops.cast(y_true, y_pred.dtype)
-        return K.mean(math_ops.multiply(math_ops.abs(y_pred - y_true), signals_weights_tensor), axis=-1)
+        y_pred = tf.convert_to_tensor(y_pred)
+        y_true = tf.cast(y_true, y_pred.dtype)
+        return tf.reduce_mean(tf.abs(y_pred - y_true) * signals_weights_tensor, axis=-1)
 
     start_train_time = time.time()
 
@@ -88,7 +88,7 @@ def start_training(session_data, model_architecture, train_ds, val_ds, signals_w
         # distributed model to use multiple GPUs in training
         with strategy.scope():  
             distributed_model = tf.keras.models.Sequential(model_architecture)
-            optimizer = tf.keras.optimizers.Adam(lr=session_data["learning_rate"])
+            optimizer = tf.keras.optimizers.Adam(learning_rate=session_data["learning_rate"])
 
             distributed_model.compile(loss=weighted_MAE,
                         optimizer=optimizer,
@@ -114,7 +114,7 @@ def start_training(session_data, model_architecture, train_ds, val_ds, signals_w
     else:
         with tf.device(session_data["gpu_name"]):  
             singeleton_model = tf.keras.models.Sequential(model_architecture)
-            optimizer = tf.keras.optimizers.Adam(lr=session_data["learning_rate"])
+            optimizer = tf.keras.optimizers.Adam(learning_rate=session_data["learning_rate"])
             singeleton_model.compile(loss=weighted_MAE, optimizer=optimizer, metrics=["mae"])
             singeleton_model.build(input_shape=(session_data["batch_size"], \
                                                 session_data["window_size"], session_data["n_features"]))

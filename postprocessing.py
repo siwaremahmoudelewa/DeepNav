@@ -164,17 +164,21 @@ def evaluate_all_flights(model, train_flights_dict, val_flights_dict, trial_fold
         best_name_base = os.path.join(trial_folder, set_name, "reconstructed", "best")
         worst_name_base = os.path.join(trial_folder, set_name, "reconstructed", "worst")
 
-        for i in range(n_extreme_flights):
+        n_best_worst = min(n_extreme_flights, len(sorted_flights) // 2)
+
+        for i in range(n_best_worst):
             pdf_name = sorted_flights[i][0]
             old_name = os.path.join(old_name_base, pdf_name)
             new_name = os.path.join(best_name_base, pdf_name)
-            os.rename(old_name, new_name)
+            if os.path.exists(old_name):
+                os.rename(old_name, new_name)
         
-        for i in range(-n_extreme_flights, 0):
+        for i in range(-n_best_worst, 0):
             pdf_name = sorted_flights[i][0]
             old_name = os.path.join(old_name_base, pdf_name)
             new_name = os.path.join(worst_name_base, pdf_name)
-            os.rename(old_name, new_name)
+            if os.path.exists(old_name):
+                os.rename(old_name, new_name)
     
     return flights_summary
 
@@ -262,17 +266,23 @@ def summarize_session(trial_tree, model, session_data, flights_summary):
         session_data[set_name + "_mean_pos_error"] = mean_errors[1]
         session_data[set_name + "_mean_vel_error"] = mean_errors[2]
 
-    # read the header of summary.csv
-    with open('summary.csv', 'r') as read_obj:
-        csv_reader = csv.reader(read_obj)
-        header = next(csv_reader)
-
-    #remove unnecessary session_data items
+    # remove unnecessary session_data items
     # session_data.pop("n_labels") 
-    session_data.pop("n_features") 
-    session_data.pop("initial_epoch") 
+    session_data.pop("n_features", None) 
+    session_data.pop("initial_epoch", None) 
     
+    summary_file_path = 'summary.csv'
+    if not os.path.exists(summary_file_path):
+        header = list(session_data.keys())
+        with open(summary_file_path, 'w', newline='') as write_obj:
+            writer = csv.writer(write_obj)
+            writer.writerow(header)
+    else:
+        with open(summary_file_path, 'r') as read_obj:
+            csv_reader = csv.reader(read_obj)
+            header = next(csv_reader)
+
     # write session_data according to the header
-    with open('summary.csv', 'a+', newline='') as write_obj:
-        dict_writer = csv.DictWriter(write_obj, fieldnames=header)
+    with open(summary_file_path, 'a', newline='') as write_obj:
+        dict_writer = csv.DictWriter(write_obj, fieldnames=header, extrasaction='ignore')
         dict_writer.writerow(session_data)
