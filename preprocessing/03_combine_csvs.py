@@ -9,6 +9,7 @@ log files names and one PDF file containing the down positions of all flights
 
 import os
 import csv
+import glob
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -50,12 +51,13 @@ def compress_sensor_data(kf_timestamps, sensor_msg):
     
     # average all sensor data received between each two consecutive kf stamps    
     startIdx = 0
-    i = 0
     sensor_averaged = np.zeros((sensor_indices.size, sensor_msg["data"].shape[1]))
-    for endIdx in sensor_indices:
-        sensor_averaged[i] = np.mean(sensor_msg["data"][startIdx:endIdx], axis = 0)
+    for i, endIdx in enumerate(sensor_indices):
+        if endIdx > startIdx:
+            sensor_averaged[i] = np.mean(sensor_msg["data"][startIdx:endIdx], axis=0)
+        else:
+            sensor_averaged[i] = sensor_averaged[i - 1] if i > 0 else sensor_msg["data"][0]
         startIdx = endIdx
-        i += 1
 
     return np.array(sensor_averaged)
 
@@ -78,13 +80,6 @@ with open(flight_names_csv, "w") as f:
     for flight_name in flight_names:
         writer.writerow([flight_name])
 
-messages = {"ekf" : {"file" : '_estimator_status',     "cols" : ["states["+str(i)+"]" for i in range(10)]},
-            "mag" : {"file" : '_vehicle_magnetometer', "cols" : ["magnetometer_ga["+str(i)+"]" for i in range(3)]},
-            "baro": {"file" : '_vehicle_air_data',     "cols" : ["baro_alt_meter", "baro_temp_celcius"]},
-            "imu" : {"file" : '_sensor_combined',      "cols" : ["gyro_rad["+str(i)+"]" for i in range(3)] + \
-                                                                ["accelerometer_m_s2["+str(i)+"]" for i in range(3)]},
-            }
-
 # iterate on the flights (one folder per flight)
 total_flights_num = len(flight_names) - 1
 
@@ -101,22 +96,76 @@ with PdfPages(all_flights_pdf) as pdf:
             print("This log was processed earlier, skipping to the next!")
             continue
         
-        base_name = os.path.join(input_dir, flight_name, flight_name)
-        
-        log_is_corrupted = False
-        
-        for message in messages.values():
-            file_name = base_name + message["file"] + "_0.csv"
-            if os.path.isfile(file_name):
-                message["timestamps"] = pd.read_csv(file_name, usecols=["timestamp"]).to_numpy().squeeze()
-                message["data"] = pd.read_csv(file_name, usecols=message["cols"])[message["cols"]].to_numpy()
-            else:
-                log_is_corrupted = True
+        fdir = os.path.join(input_dir, flight_name)
+        if not os.path.isdir(fdir):
+            continue
+
+        # 1. EKF States: check estimator_states first, then estimator_status across instances
+        ekf_candidates = sorted(glob.glob(os.path.join(fdir, f"{flight_name}_estimator_states_*.csv"))) + \
+                         sorted(glob.glob(os.path.join(fdir, f"{flight_name}_estimator_status_*.csv")))
+        ekf_file = None
+        for cand in ekf_candidates:
+            cols = pd.read_csv(cand, nrows=1).columns
+            if all(f"states[{i}]" in cols for i in range(10)):
+                ekf_file = cand
                 break
 
-        if log_is_corrupted:
+        # 2. Magnetometer: check vehicle_magnetometer across all instances (_0, _1, etc.)
+        mag_candidates = sorted(glob.glob(os.path.join(fdir, f"{flight_name}_vehicle_magnetometer_*.csv")))
+        mag_file = None
+        for cand in mag_candidates:
+            cols = pd.read_csv(cand, nrows=1).columns
+            if all(f"magnetometer_ga[{i}]" in cols for i in range(3)):
+                mag_file = cand
+                break
+
+        # 3. Barometer: check vehicle_air_data and detect temperature column name
+        baro_candidates = sorted(glob.glob(os.path.join(fdir, f"{flight_name}_vehicle_air_data_*.csv")))
+        baro_file = None
+        baro_temp_col = None
+        for cand in baro_candidates:
+            cols = pd.read_csv(cand, nrows=1).columns
+            if "baro_alt_meter" in cols:
+                baro_file = cand
+                if "ambient_temperature" in cols:
+                    baro_temp_col = "ambient_temperature"
+                elif "baro_temp_celcius" in cols:
+                    baro_temp_col = "baro_temp_celcius"
+                break
+
+        # 4. IMU: check sensor_combined across instances
+        imu_candidates = sorted(glob.glob(os.path.join(fdir, f"{flight_name}_sensor_combined_*.csv")))
+        imu_file = None
+        for cand in imu_candidates:
+            cols = pd.read_csv(cand, nrows=1).columns
+            if all(f"gyro_rad[{i}]" in cols for i in range(3)) and all(f"accelerometer_m_s2[{i}]" in cols for i in range(3)):
+                imu_file = cand
+                break
+
+        if not (ekf_file and mag_file and baro_file and baro_temp_col and imu_file):
             print("flight number", flight_number, "has a missing csv file, skipping!")
             continue
+
+        messages = {
+            "ekf": {
+                "timestamps": pd.read_csv(ekf_file, usecols=["timestamp"]).to_numpy().squeeze(),
+                "data": pd.read_csv(ekf_file, usecols=[f"states[{i}]" for i in range(10)])[[f"states[{i}]" for i in range(10)]].to_numpy()
+            },
+            "mag": {
+                "timestamps": pd.read_csv(mag_file, usecols=["timestamp"]).to_numpy().squeeze(),
+                "data": pd.read_csv(mag_file, usecols=[f"magnetometer_ga[{i}]" for i in range(3)])[[f"magnetometer_ga[{i}]" for i in range(3)]].to_numpy()
+            },
+            "baro": {
+                "timestamps": pd.read_csv(baro_file, usecols=["timestamp"]).to_numpy().squeeze(),
+                "data": pd.read_csv(baro_file, usecols=["baro_alt_meter", baro_temp_col])[["baro_alt_meter", baro_temp_col]].to_numpy()
+            },
+            "imu": {
+                "timestamps": pd.read_csv(imu_file, usecols=["timestamp"]).to_numpy().squeeze(),
+                "data": pd.read_csv(imu_file, usecols=[f"gyro_rad[{i}]" for i in range(3)] + [f"accelerometer_m_s2[{i}]" for i in range(3)])[
+                    [f"gyro_rad[{i}]" for i in range(3)] + [f"accelerometer_m_s2[{i}]" for i in range(3)]
+                ].to_numpy()
+            }
+        }
 
         # trim the kf vector to start after every individual sensor
         ekf_timestamps = messages["ekf"]["timestamps"]
@@ -146,9 +195,15 @@ with PdfPages(all_flights_pdf) as pdf:
         takeoff_height = -1
         land_height = -1
         down_position = combined_data[:,-1]
-        takeoff_index = np.argmax(down_position<takeoff_height)
-        land_index = -1 - np.argmax(down_position[::-1]<land_height)
-        combined_data = combined_data[takeoff_index:land_index, :]
+        if np.any(down_position < takeoff_height) and np.any(down_position < land_height):
+            takeoff_index = np.argmax(down_position < takeoff_height)
+            land_index = -1 - np.argmax(down_position[::-1] < land_height)
+            if takeoff_index < (combined_data.shape[0] + land_index):
+                combined_data = combined_data[takeoff_index:land_index, :]
+
+        if combined_data.shape[0] == 0:
+            print("flight number", flight_number, "has no valid flight data points, skipping!")
+            continue
 
         # output file
         output_file = os.path.join(output_csvs_dir, flight_name + ".csv")
