@@ -9,3 +9,5 @@ recycle/*
 *.mp4
 *.json
 *.mat
+*env*
+.venv
